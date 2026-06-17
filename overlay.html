@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>Overlay</title>
+<style>
+body{margin:0;font-family:sans-serif;color:#fff;background:transparent}
+.wrap{
+    position:relative;
+    width:700px;
+    background:rgba(0,0,0,.65);
+    padding:24px;
+    border-radius:16px;
+    overflow:hidden;
+}
+.title{font-size:36px;font-weight:bold}
+.goal{font-size:48px;margin:15px 0}
+.info{font-size:32px}
+.level-row{display:flex;align-items:center;gap:16px;margin-top:8px}
+.level{font-size:32px;font-weight:bold;flex-shrink:0;min-width:88px}
+.exp-wrap{flex:1;min-width:0}
+.exp-bar{
+height:28px;background:rgba(255,255,255,.12);border-radius:14px;overflow:hidden;
+border:2px solid rgba(255,255,255,.25);box-sizing:border-box;
+}
+.exp-fill{
+height:100%;width:0;background:linear-gradient(90deg,#3d8bfd,#6ee7b7);
+border-radius:12px;transition:width .5s ease;
+}
+.popup{
+position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+flex-direction:column;
+font-size:56px;font-weight:bold;background:rgba(0,0,0,.7);text-align:center;
+border-radius:16px;
+overflow:hidden;
+}
+.popup .main{font-size:56px;line-height:1.1}
+.popup .sub{font-size:36px;margin-top:10px;opacity:.95}
+.popup .close-btn{
+margin-top:16px;
+padding:8px 20px;
+border:0;
+border-radius:999px;
+font-size:22px;
+font-weight:bold;
+cursor:pointer;
+color:#111;
+background:#fff;
+box-shadow:0 4px 16px rgba(0,0,0,.35);
+}
+.popup.quest{
+background:linear-gradient(180deg,rgba(10,25,45,.85),rgba(0,0,0,.8));
+}
+.popup.levelup{
+background:
+radial-gradient(circle at center,rgba(255,210,75,.5) 0%,rgba(255,135,0,.2) 35%,rgba(0,0,0,.88) 75%);
+animation:levelFlash .45s ease-out;
+}
+.popup.levelup::before,.popup.levelup::after{
+content:"";position:absolute;inset:-20%;
+background:
+radial-gradient(circle,rgba(255,255,255,.95) 0 2px,transparent 3px) 10% 15%/130px 130px,
+radial-gradient(circle,rgba(255,230,140,.9) 0 2px,transparent 3px) 65% 35%/150px 150px,
+radial-gradient(circle,rgba(255,180,70,.9) 0 2px,transparent 3px) 40% 75%/140px 140px;
+opacity:0;
+pointer-events:none;
+}
+.popup.levelup::before{animation:sparkBurst 1.2s ease-out infinite;}
+.popup.levelup::after{animation:sparkBurst 1.2s ease-out .35s infinite;}
+.popup.levelup .main{
+font-size:78px;color:#ffe27a;letter-spacing:1px;
+text-shadow:0 0 10px #fff6c6,0 0 24px #ffcf59,0 0 48px rgba(255,170,0,.95);
+animation:levelPulse .95s ease-in-out infinite alternate;
+}
+.popup.levelup .sub{
+font-size:42px;color:#fff2c4;
+text-shadow:0 0 8px rgba(255,220,130,.85);
+}
+.popup.rareWin{
+background:radial-gradient(circle at center,rgba(70,210,150,.88) 0%,rgba(6,30,22,.98) 72%);
+animation:rarePop .4s ease-out;
+}
+.popup.rareWin .main{
+font-size:68px;color:#a8ffd2;
+text-shadow:0 0 12px rgba(120,255,206,.95),0 0 35px rgba(36,220,164,.9);
+}
+.popup.rareWin .sub{font-size:34px;color:#ffffff;text-shadow:0 2px 6px rgba(0,0,0,.55)}
+.popup.rareLose{
+background:radial-gradient(circle at center,rgba(220,65,100,.9) 0%,rgba(42,8,14,.985) 74%);
+animation:rarePop .4s ease-out;
+}
+.popup.rareLose .main{
+font-size:68px;color:#ffb0c2;
+text-shadow:0 0 12px rgba(255,150,180,.95),0 0 35px rgba(255,70,120,.9);
+}
+.popup.rareLose .sub{font-size:34px;color:#ffffff;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+@keyframes levelFlash{
+from{opacity:0;transform:scale(.96)}
+to{opacity:1;transform:scale(1)}
+}
+@keyframes rarePop{
+from{opacity:0;transform:scale(.94)}
+to{opacity:1;transform:scale(1)}
+}
+@keyframes levelPulse{
+from{transform:scale(1)}
+to{transform:scale(1.1)}
+}
+@keyframes sparkBurst{
+0%{opacity:0;transform:scale(.6) rotate(0deg)}
+20%{opacity:.95}
+100%{opacity:0;transform:scale(1.2) rotate(18deg)}
+}
+</style></head><body>
+<div class="wrap">
+<div class="title">🎯 今日の目標</div>
+<div class="goal" id="goal">なし</div>
+<div class="info" id="progress">0/0</div>
+<div class="level-row">
+<div class="level" id="level">Lv.1</div>
+<div class="exp-wrap">
+<div class="exp-bar"><div class="exp-fill" id="expFill"></div></div>
+</div>
+</div>
+<div class="popup" id="popup"></div>
+</div>
+
+<script>
+const bc=new BroadcastChannel("rpg");
+let popupTimer=null;
+let popupPersistent=false;
+
+function update(state){
+const quest=state.quests[state.goalIndex];
+if(!state.quests.length) goal.textContent="なし";
+else if(!quest) goal.textContent="なし";
+else if(quest.done) goal.textContent=`${quest.name}（達成済み）`;
+else goal.textContent=quest.name;
+const done=state.quests.filter(q=>q.done).length;
+progress.textContent=`進捗 ${done}/${state.quests.length}`;
+level.textContent=`Lv.${state.level}`;
+const next=state.nextExp||100;
+const pct=Math.min(100,Math.max(0,state.exp/next*100));
+expFill.style.width=`${pct}%`;
+}
+
+function hidePopup(){
+if(popupTimer){clearTimeout(popupTimer);popupTimer=null;}
+popupPersistent=false;
+popup.style.display="none";
+popup.className="popup";
+}
+
+function show(msg,type="quest",persistent=false){
+popup.className=`popup ${type}`;
+popup.innerHTML=msg;
+popup.style.display="flex";
+popupPersistent=persistent;
+if(popupTimer){clearTimeout(popupTimer);popupTimer=null;}
+if(!persistent){
+popupTimer=setTimeout(()=>hidePopup(),3000);
+}
+}
+
+popup.addEventListener("click",(e)=>{
+if(e.target.closest(".close-btn")) hidePopup();
+});
+document.addEventListener("keydown",(e)=>{
+if(!popupPersistent) return;
+if(e.key==="Escape"||e.key==="Enter"||e.key===" "){
+hidePopup();
+}
+});
+
+bc.onmessage=(e)=>{
+const {state,event}=e.data;
+update(state);
+if(event?.type==="quest"){
+show(`<div class="main">🏆 QUEST CLEAR</div><div class="sub">${event.name}<br>+${event.exp} EXP</div>`,"quest");
+}
+if(event?.type==="levelup"){
+show(`<div class="main">LEVEL UP!</div><div class="sub">Lv.${event.from} → Lv.${event.to}</div>`,"levelup");
+}
+if(event?.type==="rare"){
+const typeClass=event.outcome==="win"?"rareWin":"rareLose";
+show(
+`<div class="main">${event.title}</div><div class="sub">${event.message}</div><button class="close-btn">閉じる</button>`,
+typeClass,
+true
+);
+}
+if(event?.type==="dismiss"){
+hidePopup();
+}
+};
+
+const saved=JSON.parse(localStorage.getItem("rpg_state")||"null");
+if(saved) update(saved);
+</script></body></html>
